@@ -1,0 +1,4 @@
+# config.py.example
+USER_ID = "YOUR_USER_ID"
+PASSWORD = "YOUR_PASSWORD"
+SEL_HOUSE_ID = "YOUR_HOUSE_ID"
