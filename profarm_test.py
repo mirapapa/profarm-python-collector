@@ -157,7 +157,7 @@ def main():
                         f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ 履歴取得失敗。再ログインします。"
                     )
                     needs_login = True
-                    time.sleep(10)
+                    time.sleep(60)
                     continue
 
         except Exception as e:
@@ -165,7 +165,7 @@ def main():
                 f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ 通信エラー: {e}"
             )
             needs_login = True
-            time.sleep(10)
+            time.sleep(60)
 
         time.sleep(1)
 
