@@ -101,6 +101,7 @@ def main():
 
         try:
             # A. SEND_STATUS (5秒)
+            # 📡 STATUS: {'auth_key': '.....', 'status': 200, 'alertCount': 0, 'progressvalue': '', 'progressstatus': ''}
             if now - last_send_status >= 5:
                 res = session.post(
                     f"https://{HOST}/sendstatus",
@@ -111,13 +112,19 @@ def main():
                     },
                 )
                 st_json = res.json()
+                # 再ログインが必要な場合
+                if st_json.get("status") != 200:
+                    print(
+                        f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 📡 STATUS: {st_json} ⚠️ 再ログインします。"
+                    )
+                    needs_login = True
+                    time.sleep(60)
+                    continue
                 update_session_key(session, st_json)
-                print(
-                    f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 📡 STATUS: {res.status_code} (API:{st_json.get('status')})"
-                )
                 last_send_status = now
 
             # B. ALERT_DATA (60秒)
+            # 🔔 ALERT: {'auth_key': '.....', 'status': 200, 'alertCount': 0, 'dim_FailSafe': '0'}
             if now - last_alert_data >= 60:
                 res = session.post(
                     f"https://{HOST}/alertdata",
@@ -128,9 +135,14 @@ def main():
                     },
                 )
                 al_json = res.json()
-                print(
-                    f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🔔 ALERT: {al_json}"
-                )
+                # 再ログインが必要な場合
+                if al_json.get("status") != 200:
+                    print(
+                        f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ 再ログインします。"
+                    )
+                    needs_login = True
+                    time.sleep(60)
+                    continue
                 update_session_key(session, al_json)
                 last_alert_data = now
 
@@ -145,6 +157,7 @@ def main():
                     },
                 )
                 hist_data = res.json()
+                # 履歴データ取得失敗時に再ログイン
                 if hist_data.get("status") == 200:
                     update_session_key(session, hist_data)
                     save_to_csv(hist_data)
