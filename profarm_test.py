@@ -1,17 +1,132 @@
-import csv
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
+import ambient
 import requests
 
 import config
 
+# --- 定数設定 ---
 HOST = "pms.profarm-j.com"
 USER_ID = config.USER_ID
 PASSWORD = config.PASSWORD
 SEL_HOUSE_ID = config.SEL_HOUSE_ID
 CSV_FILE = "profarm_data.csv"
+
+# Ambient設定
+AMB_URL = f"http://ambidata.io/api/v2/channels/{config.AMBIENT_CHANNEL_ID}/data"
+AMB_WRITE_KEY = config.AMBIENT_WRITE_KEY
+
+
+# 1. 送信専用の窓口（エグゼキューター）を1つだけ作る
+# これにより、同時に動く送信スレッドは必ず1つに制限されます
+executor = ThreadPoolExecutor(max_workers=1)
+
+
+def send_spreadsheet_worker(data_dict):
+    """
+    バックグラウンドでGASにデータを送信する（中身はそのまま）
+    """
+    fields = [
+        "datadatetime",
+        "hom_Temp1",
+        "hom_Temp2",
+        "hom_Temp24H1",
+        "hom_Temp24H2",
+        "hom_DifAveTemp1",
+        "hom_RelHumid1",
+        "hom_RelHumid2",
+        "hom_SatDef1",
+        "hom_SatDef2",
+        "hom_Co2",
+        "nom_Sorinkling",
+        "oum_Temp",
+        "oum_RelHumid",
+        "oum_SatDef",
+        "oum_WindSpeed",
+        "oum_WindDir",
+        "oum_AmountInso",
+        "oum_AccumInso",
+        "oum_RainFlg",
+        "dem_SkylightURate1",
+        "dem_SkylightURate2",
+        "des_HeaterFireState",
+        "des_HeaterBlowState",
+        "des_Circulator1State",
+        "des_Co2GeneratorState",
+        "des_MistDeviceState",
+        "des_SupplySignalState",
+        "nom_CoolTemp",
+    ]
+    params = {f: data_dict.get(f, "") for f in fields}
+
+    try:
+        # timeoutはGASの処理時間を考慮して30秒に設定
+        res = requests.get(config.GAS_URL, params=params, timeout=30)
+
+        if res.status_code == 200:
+            print(
+                f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🟢 SpreadSheet送信完了: {res.text}"
+            )
+        else:
+            print(
+                f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🔴 SpreadSheetエラー: {res.status_code}"
+            )
+    except Exception as e:
+        print(
+            f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ SpreadSheet通信失敗: {e}"
+        )
+
+
+def send_to_spreadsheet(data_dict):
+    """
+    threading.Thread の代わりに executor.submit を使う
+    """
+    # 仕事をキュー（待ち行列）に追加する。
+    # 前の仕事が終わっていなければ、終わるまで裏で待機してくれます。
+    executor.submit(send_spreadsheet_worker, data_dict)
+
+
+def send_to_ambient(data_dict):
+    """Ambient公式ライブラリを使って送信する"""
+    # チャネルID(数値)とライトキー(文字列)で初期化
+    am = ambient.Ambient(int(config.AMBIENT_CHANNEL_ID), config.AMBIENT_WRITE_KEY)
+
+    # データの成形
+    dt_str = data_dict.get("datadatetime", "").replace("/", "-")
+
+    # データを数値に変換（ライブラリを使う場合も数値型で渡すのが確実）
+    def to_num(val):
+        try:
+            return float(val)
+        except:
+            return 0.0
+
+    payload = {
+        "created": dt_str,
+        "d1": to_num(data_dict.get("hom_Temp1")),
+        "d2": to_num(data_dict.get("oum_AmountInso")),
+        "d3": to_num(data_dict.get("nom_Sorinkling")),
+    }
+
+    try:
+        res = am.send(payload)
+        if res.status_code == 200:
+            print(
+                # f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🚀 Ambient送信成功: {payload['data'][0]}"
+                f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🚀 Ambient送信成功: {payload}"
+            )
+        else:
+            print(
+                f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ Ambient送信失敗: {res.status_code}"
+            )
+    except Exception as e:
+        print(
+            f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ Ambient通信エラー: {e}"
+        )
 
 
 def update_session_key(session, response_json):
@@ -21,41 +136,6 @@ def update_session_key(session, response_json):
         session.cookies.set("data", new_key, domain=HOST)
         return True
     return False
-
-
-def save_to_csv(data_dict):
-    """履歴データをCSVに保存"""
-    file_exists = os.path.isfile(CSV_FILE)
-    fields = [
-        "datadatetime",
-        "hom_Temp1",
-        "hom_RelHumid1",
-        "hom_SatDef1",
-        "hom_Co2",
-        "oum_Temp",
-        "oum_AmountInso",
-        "des_HeaterFireState",
-    ]
-
-    row = {field: data_dict.get(field, "0") for field in fields}
-
-    # ヒーター状態などの文字化け/空欄対策
-    if "des_HeaterFireState" in row and (
-        row["des_HeaterFireState"] == "0" or row["des_HeaterFireState"] is None
-    ):
-        row["des_HeaterFireState"] = "OFF"
-
-    if not row.get("datadatetime"):
-        row["datadatetime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-
-    try:
-        with open(CSV_FILE, mode="a", newline="", encoding="utf-8-sig") as f:
-            writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
-            if not file_exists:
-                writer.writeheader()
-            writer.writerow(row)
-    except Exception as e:
-        print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ CSV保存失敗: {e}")
 
 
 def main():
@@ -160,10 +240,13 @@ def main():
                 # 履歴データ取得失敗時に再ログイン
                 if hist_data.get("status") == 200:
                     update_session_key(session, hist_data)
-                    save_to_csv(hist_data)
                     print(
                         f"[{hist_data.get('datadatetime')}] 📈 HISTORY: {hist_data.get('hom_Temp1')}℃"
                     )
+                    # 1. Ambient送信 (即時/ライブラリ)
+                    send_to_ambient(hist_data)
+                    # 2. スプレッドシート送信 (別スレッドで実行)
+                    send_to_spreadsheet(hist_data)
                     last_history_data = now
                 else:
                     print(
