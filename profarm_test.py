@@ -96,7 +96,12 @@ def send_to_ambient(data_dict):
     am = ambient.Ambient(int(config.AMBIENT_CHANNEL_ID), config.AMBIENT_WRITE_KEY)
 
     # データの成形
-    dt_str = data_dict.get("datadatetime", "").replace("/", "-")
+    dt_raw = data_dict.get("datadatetime", "").replace("/", "-")
+    if len(dt_raw) >= 19:
+        # 0文字目から17文字目（秒の直前）までを使い、末尾を 00 に固定
+        dt_str = dt_raw[:17] + "00"
+    else:
+        dt_str = dt_raw
 
     # データを数値に変換（ライブラリを使う場合も数値型で渡すのが確実）
     def to_num(val):
