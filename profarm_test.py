@@ -5,10 +5,8 @@ from datetime import datetime
 
 import requests
 
-# --- 設定ファイルを読み込む ---
 import config
 
-# 定数設定
 HOST = "pms.profarm-j.com"
 USER_ID = config.USER_ID
 PASSWORD = config.PASSWORD
@@ -16,11 +14,18 @@ SEL_HOUSE_ID = config.SEL_HOUSE_ID
 CSV_FILE = "profarm_data.csv"
 
 
-def save_to_csv(data_dict):
-    """取得した履歴データをCSVファイルに追記保存する"""
-    file_exists = os.path.isfile(CSV_FILE)
+def update_session_key(session, response_json):
+    """レスポンスに含まれる新しいauth_keyでセッションを更新する"""
+    new_key = response_json.get("auth_key")
+    if new_key:
+        session.cookies.set("data", new_key, domain=HOST)
+        return True
+    return False
 
-    # 保存したい項目のリスト
+
+def save_to_csv(data_dict):
+    """履歴データをCSVに保存"""
+    file_exists = os.path.isfile(CSV_FILE)
     fields = [
         "datadatetime",
         "hom_Temp1",
@@ -32,17 +37,14 @@ def save_to_csv(data_dict):
         "des_HeaterFireState",
     ]
 
-    # データが存在しない場合のデフォルト値処理
-    row = {}
-    for field in fields:
-        val = data_dict.get(field)
-        if val is None:
-            # 状態系ならOFF、数値系なら0をデフォルトにする
-            row[field] = "OFF" if "State" in field else "0"
-        else:
-            row[field] = val
+    row = {field: data_dict.get(field, "0") for field in fields}
 
-    # 日時がJSONにない場合は現在のシステム時刻を入れる
+    # ヒーター状態などの文字化け/空欄対策
+    if "des_HeaterFireState" in row and (
+        row["des_HeaterFireState"] == "0" or row["des_HeaterFireState"] is None
+    ):
+        row["des_HeaterFireState"] = "OFF"
+
     if not row.get("datadatetime"):
         row["datadatetime"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
 
@@ -53,35 +55,27 @@ def save_to_csv(data_dict):
                 writer.writeheader()
             writer.writerow(row)
     except Exception as e:
-        print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ CSV保存エラー: {e}")
+        print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ CSV保存失敗: {e}")
 
 
 def main():
-    """メインループ"""
     session = requests.Session()
     session.headers.update({"User-Agent": "Mozilla/5.0"})
-
     needs_login = True
-
-    # 各リクエストの最終実行時刻を保持 (UNIXタイムスタンプ)
-    last_send_status = 0
-    last_history_data = 0
-    last_alert_data = 0
+    last_send_status = last_history_data = last_alert_data = 0
 
     print(
-        f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🚀 モニタリングを開始します..."
+        f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🚀 逐次キー更新モードで開始します..."
     )
-    print(f"設定: STATUS(5s), HISTORY(60s), ALERT(60s) / 保存先: {CSV_FILE}")
 
     while True:
         now = time.time()
-        current_time_str = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+        current_ts = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
 
-        # --- 1. ログイン処理 (初回またはエラー発生時) ---
         if needs_login:
-            print(f"[{current_time_str}] 🔐 ログイン処理を実行中...")
+            print(f"[{current_ts}] 🔐 ログイン実行中...")
             try:
-                login_res = session.post(
+                res = session.post(
                     f"https://{HOST}/login",
                     json={
                         "dispId": "ha0101u",
@@ -90,33 +84,25 @@ def main():
                         "password": PASSWORD,
                         "saveUserId": "0",
                     },
-                ).json()
-
-                auth_key = login_res.get("auth_key")
-                if auth_key:
-                    session.cookies.set("data", auth_key, domain=HOST)
+                )
+                login_data = res.json()
+                if update_session_key(session, login_data):
                     needs_login = False
-                    print(
-                        f"[{current_time_str}] ✅ ログイン成功 [Key: {auth_key[:8]}...]"
-                    )
-                    # ログイン直後に全データを取得するためタイマーをリセット
+                    print(f"[{current_ts}] ✅ ログイン成功")
                     last_send_status = last_history_data = last_alert_data = 0
                 else:
-                    print(
-                        f"[{current_time_str}] ❌ ログイン失敗。5分後にリトライします。 Response: {login_res}"
-                    )
+                    print(f"[{current_ts}] ❌ ログイン失敗。5分待機。")
                     time.sleep(300)
                     continue
             except Exception as e:
-                print(f"[{current_time_str}] ❌ ログインエラー: {e}")
+                print(f"[{current_ts}] ❌ ログインエラー: {e}")
                 time.sleep(300)
                 continue
 
-        # --- 2. 各種データの取得実行 ---
         try:
-            # A. SEND_STATUS (5秒おき)
+            # A. SEND_STATUS (5秒)
             if now - last_send_status >= 5:
-                res_status = session.post(
+                res = session.post(
                     f"https://{HOST}/sendstatus",
                     json={
                         "selHouseId": SEL_HOUSE_ID,
@@ -124,15 +110,16 @@ def main():
                         "lang": "ja",
                     },
                 )
-                st_json = res_status.json()
+                st_json = res.json()
+                update_session_key(session, st_json)
                 print(
-                    f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 📡 STATUS: {res_status.status_code} (Status:{st_json.get('status')})"
+                    f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 📡 STATUS: {res.status_code} (API:{st_json.get('status')})"
                 )
                 last_send_status = now
 
-            # B. ALERT_DATA (60秒おき)
+            # B. ALERT_DATA (60秒)
             if now - last_alert_data >= 60:
-                res_alert = session.post(
+                res = session.post(
                     f"https://{HOST}/alertdata",
                     json={
                         "selHouseId": SEL_HOUSE_ID,
@@ -140,14 +127,16 @@ def main():
                         "lang": "ja",
                     },
                 )
+                al_json = res.json()
                 print(
-                    f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🔔 ALERT: {res_alert.json()}"
+                    f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🔔 ALERT: {al_json}"
                 )
+                update_session_key(session, al_json)
                 last_alert_data = now
 
-            # C. HISTORY_DATA (60秒おき)
+            # C. HISTORY_DATA (60秒)
             if now - last_history_data >= 60:
-                res_hist = session.post(
+                res = session.post(
                     f"https://{HOST}/historydata",
                     json={
                         "dispId": "hb0201u",
@@ -155,20 +144,20 @@ def main():
                         "service": "get_historydata",
                     },
                 )
-                data_hist = res_hist.json()
-
-                if data_hist.get("status") == 200:
+                hist_data = res.json()
+                if hist_data.get("status") == 200:
+                    update_session_key(session, hist_data)
+                    save_to_csv(hist_data)
                     print(
-                        f"[{data_hist.get('datadatetime')}] 📈 HISTORY取得完了 (Temp: {data_hist.get('hom_Temp1')}℃)"
+                        f"[{hist_data.get('datadatetime')}] 📈 HISTORY: {hist_data.get('hom_Temp1')}℃"
                     )
-                    save_to_csv(data_hist)
                     last_history_data = now
                 else:
                     print(
-                        f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ 取得失敗 (Status: {data_hist.get('status')})。再ログインします。"
+                        f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ 履歴取得失敗。再ログインします。"
                     )
                     needs_login = True
-                    time.sleep(300)
+                    time.sleep(10)
                     continue
 
         except Exception as e:
@@ -176,10 +165,8 @@ def main():
                 f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ 通信エラー: {e}"
             )
             needs_login = True
-            time.sleep(300)
-            continue
+            time.sleep(10)
 
-        # CPU負荷軽減のための待機
         time.sleep(1)
 
 
