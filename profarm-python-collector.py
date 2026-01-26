@@ -90,18 +90,36 @@ def send_to_spreadsheet(data_dict):
     executor.submit(send_spreadsheet_worker, data_dict)
 
 
-def send_to_ambient(data_dict):
+def get_house_distance():
+    try:
+        response = requests.get(f"{config.GAS_URL}?action=read", timeout=10)
+        if response.status_code == 200:
+            # "0.0,1706188000000" のような形式で届く
+            parts = response.text.split(",")
+            val = float(parts[0])
+            last_update_ms = float(parts[1]) / 1000  # 秒単位に変換
+
+            now_ts = time.time()
+            # 600秒(10分)以上更新されていなければ「古い」と判断
+            if now_ts - last_update_ms < 600:
+                return val
+            else:
+                print(
+                    f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ ハウスデータが古いためスキップします (最終更新: {datetime.fromtimestamp(last_update_ms)})"
+                )
+                return None  # 古い場合はNoneを返す
+    except Exception as e:
+        print(f"ハウスデータ取得エラー: {e}")
+    return None
+
+
+def send_to_ambient_worker(data_dict):
     """Ambient公式ライブラリを使って送信する"""
     # チャネルID(数値)とライトキー(文字列)で初期化
     am = ambient.Ambient(int(config.AMBIENT_CHANNEL_ID), config.AMBIENT_WRITE_KEY)
 
     # データの成形
     dt_raw = data_dict.get("datadatetime", "").replace("/", "-")
-    if len(dt_raw) >= 19:
-        # 0文字目から17文字目（秒の直前）までを使い、末尾を 00 に固定
-        dt_str = dt_raw[:17] + "00"
-    else:
-        dt_str = dt_raw
 
     # データを数値に変換（ライブラリを使う場合も数値型で渡すのが確実）
     def to_num(val):
@@ -110,12 +128,18 @@ def send_to_ambient(data_dict):
         except:
             return 0.0
 
+    d4_val = get_house_distance()
+
     payload = {
-        "created": dt_str,
+        "created": dt_raw,
         "d1": to_num(data_dict.get("hom_Temp1")),
         "d2": to_num(data_dict.get("oum_AmountInso")),
         "d3": to_num(data_dict.get("nom_Sorinkling")),
     }
+
+    # d4がNoneでない（有効な）時だけ追加する
+    if d4_val is not None:
+        payload["d4"] = d4_val
 
     try:
         res = am.send(payload)
@@ -132,6 +156,10 @@ def send_to_ambient(data_dict):
         print(
             f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ Ambient通信エラー: {e}"
         )
+
+
+def send_to_ambient(data_dict):
+    executor.submit(send_to_ambient_worker, data_dict)
 
 
 def update_session_key(session, response_json):
@@ -246,7 +274,7 @@ def main():
                 if hist_data.get("status") == 200:
                     update_session_key(session, hist_data)
                     print(
-                        f"[{hist_data.get('datadatetime')}] 📈 HISTORY: {hist_data.get('hom_Temp1')}℃"
+                        f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 📈 HISTORY({hist_data.get("datadatetime")}): {hist_data.get('hom_Temp1')}℃"
                     )
                     # 1. Ambient送信 (即時/ライブラリ)
                     send_to_ambient(hist_data)
