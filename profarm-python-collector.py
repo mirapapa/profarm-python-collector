@@ -29,6 +29,7 @@ latest_outside_data = {"value": None, "timestamp": 0}
 # 送信専用エグゼキューター（1スレッド制限）
 executor = ThreadPoolExecutor(max_workers=1)
 
+
 # --- MQTT コールバック関数 ---
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
@@ -37,6 +38,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
     else:
         print(f"Beebotte接続失敗: {reason_code}")
 
+
 def on_message(client, userdata, msg):
     global latest_outside_data
     try:
@@ -44,15 +46,17 @@ def on_message(client, userdata, msg):
         val = payload.get("data")
         if val is not None:
             # 受信した値とMacの現在時刻を記録
-            latest_outside_data = {
-                "value": float(val),
-                "timestamp": time.time()
-            }
-            print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 📥 Beebotte受信: {val} (トピック: {msg.topic})")
+            latest_outside_data = {"value": float(val), "timestamp": time.time()}
+            print(
+                f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 📥 Beebotte受信: {val} (トピック: {msg.topic})"
+            )
         else:
-            print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ Beebotte受信しましたが 'data' フィールドが空です: {payload}")
+            print(
+                f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ Beebotte受信しましたが 'data' フィールドが空です: {payload}"
+            )
     except Exception as e:
         print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ MQTT受信エラー: {e}")
+
 
 # --- 判定ロジック ---
 def get_valid_outside_distance():
@@ -60,10 +64,11 @@ def get_valid_outside_distance():
     global latest_outside_data
     val = latest_outside_data["value"]
     ts = latest_outside_data["timestamp"]
-    
+
     if val is not None and (time.time() - ts < 600):
         return val
     return None
+
 
 # --- 送信ワーカー関数 ---
 def send_to_spreadsheet_worker(data_dict):
@@ -106,9 +111,12 @@ def send_to_spreadsheet_worker(data_dict):
         res = requests.get(config.GAS_URL, params=params, timeout=30)
 
         if res.status_code == 200:
-            print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🟢 SpreadSheet送信完了: {res.text}")
+            print(
+                f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🟢 SpreadSheet送信完了: {res.text}"
+            )
     except Exception as e:
         print(f"❌ SpreadSheet通信失敗: {e}")
+
 
 def send_to_ambient_worker(data_dict):
     """Ambient公式ライブラリを使って送信する"""
@@ -138,22 +146,27 @@ def send_to_ambient_worker(data_dict):
     # d4がNoneでない（有効な）時だけ追加する
     if d4_val is not None:
         payload["d4"] = d4_val
-        print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🔗 合体成功: Houseデータ + 外距離({d4_val}) を送信します")
+        print(
+            f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🔗 合体成功: Houseデータ + 外距離({d4_val}) を送信します"
+        )
     else:
         # データが古かった場合、その理由もわかると親切
         ts = latest_outside_data["timestamp"]
         diff = int(time.time() - ts) if ts > 0 else "なし"
-        print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ 外距離データが無効(経過:{diff}秒)のため、Houseデータのみ送信します")
+        print(
+            f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ 外距離データが無効(経過:{diff}秒)のため、Houseデータのみ送信します"
+        )
 
     try:
         res = am.send(payload)
         if res.status_code == 200:
             status_msg = f"d4={d4_val}" if d4_val else "d4=None(old/none)"
-            print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🚀 Ambient送信完了 ({payload})")
+            print(
+                f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🚀 Ambient送信完了 ({payload})"
+            )
     except Exception as e:
-        print(
-            f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ Ambient通信エラー: {e}"
-        )
+        print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ Ambient通信エラー: {e}")
+
 
 # --- 送信指示（メインループから呼び出し） ---
 def send_all(data_dict):
@@ -169,6 +182,7 @@ def update_session_key(session, response_json):
         return True
     return False
 
+
 # --- メイン処理 ---
 def main():
     session = requests.Session()
@@ -181,12 +195,12 @@ def main():
     mqtt_client.username_pw_set(B_ACCESS_KEY, B_SECRET_KEY)
     mqtt_client.on_connect = on_connect
     mqtt_client.on_message = on_message
-    
+
     print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🚀 システム開始...")
-    
+
     try:
         mqtt_client.connect("beebotte.com", 1883, 60)
-        mqtt_client.loop_start() # 別スレッドで受信開始
+        mqtt_client.loop_start()  # 別スレッドで受信開始
     except Exception as e:
         print(f"MQTT接続エラー: {e}")
 
@@ -259,9 +273,7 @@ def main():
                 al_json = res.json()
                 # 再ログインが必要な場合
                 if al_json.get("status") != 200:
-                    print(
-                        f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ 再ログインします。"
-                    )
+                    print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ 再ログインします。")
                     needs_login = True
                     time.sleep(60)
                     continue
@@ -285,10 +297,10 @@ def main():
                     print(
                         f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 📈 HISTORY({hist_data.get("datadatetime")}): {hist_data.get('hom_Temp1')}℃"
                     )
-                    
+
                     # 合体送信実行
                     send_all(hist_data)
-                    
+
                     last_history_data = now
                 else:
                     print(
@@ -299,9 +311,7 @@ def main():
                     continue
 
         except Exception as e:
-            print(
-                f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ 通信エラー: {e}"
-            )
+            print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ 通信エラー: {e}")
             needs_login = True
             time.sleep(60)
 

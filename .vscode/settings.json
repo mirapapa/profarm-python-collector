@@ -1,0 +1,14 @@
+{
+    "python.defaultInterpreterPath": "/opt/homebrew/bin/python3.12",
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+    "black-formatter.args": [
+        "--line-length",
+        "100"
+    ]
+}
