@@ -4,3 +4,8 @@ config.py
 *.csv
 # Pythonのキャッシュを除外
 __pycache__/
+
+stderr.log
+stdout.log
+
+*.plist
