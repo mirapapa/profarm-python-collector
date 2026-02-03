@@ -1,13 +1,13 @@
-import os
-import time
 import json
+import os
 import threading
-from datetime import datetime
+import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 
-import requests
-import paho.mqtt.client as mqtt
 import ambient
+import paho.mqtt.client as mqtt
+import requests
 
 import config
 
@@ -55,7 +55,9 @@ def on_message(client, userdata, msg):
                 f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ Beebotte受信しましたが 'data' フィールドが空です: {payload}"
             )
     except Exception as e:
-        print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ MQTT受信エラー: {e}")
+        print(
+            f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ MQTT受信エラー: {e}"
+        )
 
 
 # --- 判定ロジック ---
@@ -165,7 +167,9 @@ def send_to_ambient_worker(data_dict):
                 f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] 🚀 Ambient送信完了 ({payload})"
             )
     except Exception as e:
-        print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ Ambient通信エラー: {e}")
+        print(
+            f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ Ambient通信エラー: {e}"
+        )
 
 
 # --- 送信指示（メインループから呼び出し） ---
@@ -273,7 +277,9 @@ def main():
                 al_json = res.json()
                 # 再ログインが必要な場合
                 if al_json.get("status") != 200:
-                    print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ 再ログインします。")
+                    print(
+                        f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ⚠️ 再ログインします。"
+                    )
                     needs_login = True
                     time.sleep(60)
                     continue
@@ -311,7 +317,9 @@ def main():
                     continue
 
         except Exception as e:
-            print(f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ 通信エラー: {e}")
+            print(
+                f"[{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}] ❌ 通信エラー: {e}"
+            )
             needs_login = True
             time.sleep(60)
 

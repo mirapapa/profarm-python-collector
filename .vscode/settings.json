@@ -4,11 +4,9 @@
         "editor.defaultFormatter": "ms-python.black-formatter",
         "editor.formatOnSave": true,
         "editor.codeActionsOnSave": {
-            "source.organizeImports": "explicit"
+            "source.organizeImports": "always" 
         }
     },
-    "black-formatter.args": [
-        "--line-length",
-        "100"
-    ]
+    "isort.args": ["--profile", "black"],
+    "editor.formatOnSave": true
 }
