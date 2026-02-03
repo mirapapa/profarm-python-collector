@@ -39,24 +39,24 @@ def log(message):
 # --- MQTT コールバック関数 ---
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
-        log(f" 🤖 Beebotte接続成功")
+        log(f"🤖 Beebotte接続成功")
         client.subscribe(TOPIC)
     else:
-        log(f" ❌ Beebotte接続失敗: {reason_code}")
+        log(f"❌ Beebotte接続失敗: {reason_code}")
 
 
 def on_message(client, userdata, msg):
     global latest_outside_data
     try:
-        log(f" 📥 MQTTメッセージ受信: トピック={msg.topic} ペイロード={msg.payload}")
+        log(f"📥 MQTTメッセージ受信: トピック={msg.topic} ペイロード={msg.payload}")
         val = msg.payload.decode("utf-8")
         if val is not None:
             # 受信した値とMacの現在時刻を記録
             latest_outside_data = {"value": int(val), "timestamp": time.time()}
         else:
-            log(f" ⚠️ Beebotte受信しましたが 'data' フィールドが空です: {msg.payload}")
+            log(f"⚠️ Beebotte受信しましたが 'data' フィールドが空です: {msg.payload}")
     except Exception as e:
-        log(f" ❌ MQTT受信エラー: {e}")
+        log(f"❌ MQTT受信エラー: {e}")
 
 
 # --- 判定ロジック ---
@@ -112,9 +112,9 @@ def send_to_spreadsheet_worker(data_dict):
         res = requests.get(config.GAS_URL, params=params, timeout=30)
 
         if res.status_code == 200:
-            log(f" 🟢 SpreadSheet送信完了: {res.text}")
+            log(f"🟢 SpreadSheet送信完了: {res.text}")
     except Exception as e:
-        log(f" ❌ SpreadSheet通信失敗: {e}")
+        log(f"❌ SpreadSheet通信失敗: {e}")
 
 
 def send_to_ambient_worker(data_dict):
@@ -145,20 +145,20 @@ def send_to_ambient_worker(data_dict):
     # d4がNoneでない（有効な）時だけ追加する
     if d4_val is not None:
         payload["d4"] = d4_val
-        log(f" 🔗 合体成功: Houseデータ + 排液データ({d4_val}) を送信します")
+        log(f"🔗 合体成功: Houseデータ + 排液データ({d4_val}) を送信します")
     else:
         # データが古かった場合、その理由もわかると親切
         ts = latest_outside_data["timestamp"]
         diff = int(time.time() - ts) if ts > 0 else "なし"
-        log(f" ⚠️ 排液データが無効(経過:{diff}秒)のため、Houseデータのみ送信します")
+        log(f"⚠️ 排液データが無効(経過:{diff}秒)のため、Houseデータのみ送信します")
 
     try:
         res = am.send(payload)
         if res.status_code == 200:
             status_msg = f"d4={d4_val}" if d4_val else "d4=None(old/none)"
-            log(f" 🚀 Ambient送信完了 ({payload})")
+            log(f"🚀 Ambient送信完了 ({payload})")
     except Exception as e:
-        log(f" ❌ Ambient通信エラー: {e}")
+        log(f"❌ Ambient通信エラー: {e}")
 
 
 # --- 送信指示（メインループから呼び出し） ---
@@ -189,19 +189,19 @@ def main():
     mqtt_client.on_connect = on_connect
     mqtt_client.on_message = on_message
 
-    log(f" 🚀 システム開始...")
+    log(f"🚀 システム開始...")
 
     try:
         mqtt_client.connect("beebotte.com", 1883, 60)
         mqtt_client.loop_start()  # 別スレッドで受信開始
     except Exception as e:
-        log(f" ❌ MQTT接続エラー: {e}")
+        log(f"❌ MQTT接続エラー: {e}")
 
     while True:
         now = time.time()
 
         if needs_login:
-            log(f" 🔐 ログイン実行中...")
+            log(f"🔐 ログイン実行中...")
             try:
                 res = session.post(
                     f"https://{HOST}/login",
@@ -216,14 +216,14 @@ def main():
                 login_data = res.json()
                 if update_session_key(session, login_data):
                     needs_login = False
-                    log(f" ✅ ログイン成功")
+                    log(f"✅ ログイン成功")
                     last_send_status = last_history_data = last_alert_data = 0
                 else:
-                    log(f" ❌ ログイン失敗。5分待機。")
+                    log(f"❌ ログイン失敗。5分待機。")
                     time.sleep(300)
                     continue
             except Exception as e:
-                log(f" ❌ ログインエラー: {e}")
+                log(f"❌ ログインエラー: {e}")
                 time.sleep(300)
                 continue
 
@@ -242,7 +242,7 @@ def main():
                 st_json = res.json()
                 # 再ログインが必要な場合
                 if st_json.get("status") != 200:
-                    log(f" 📡 STATUS: {st_json} ⚠️ 再ログインします。")
+                    log(f"📡 STATUS: {st_json} ⚠️ 再ログインします。")
                     needs_login = True
                     time.sleep(60)
                     continue
@@ -263,7 +263,7 @@ def main():
                 al_json = res.json()
                 # 再ログインが必要な場合
                 if al_json.get("status") != 200:
-                    log(f" ⚠️ 再ログインします。")
+                    log(f"⚠️ 再ログインします。")
                     needs_login = True
                     time.sleep(60)
                     continue
@@ -285,7 +285,7 @@ def main():
                 if hist_data.get("status") == 200:
                     update_session_key(session, hist_data)
                     log(
-                        f" 📈 HISTORY({hist_data.get("datadatetime")}): {hist_data.get('hom_Temp1')}℃"
+                        f"📈 HISTORY({hist_data.get("datadatetime")}): {hist_data.get('hom_Temp1')}℃"
                     )
 
                     # 合体送信実行
@@ -293,13 +293,13 @@ def main():
 
                     last_history_data = now
                 else:
-                    log(f" ⚠️ 履歴取得失敗。再ログインします。")
+                    log(f"⚠️ 履歴取得失敗。再ログインします。")
                     needs_login = True
                     time.sleep(60)
                     continue
 
         except Exception as e:
-            log(f" ❌ 通信エラー: {e}")
+            log(f"❌ 通信エラー: {e}")
             needs_login = True
             time.sleep(60)
 
