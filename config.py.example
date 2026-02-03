@@ -1,4 +1,13 @@
-# config.py.example
-USER_ID = "YOUR_USER_ID"
-PASSWORD = "YOUR_PASSWORD"
-SEL_HOUSE_ID = "YOUR_HOUSE_ID"
+# Profarm接続設定
+USER_ID = "..."
+PASSWORD = "..."
+SEL_HOUSE_ID = "..."
+# Ambient接続設定
+AMBIENT_CHANNEL_ID = "..."
+AMBIENT_WRITE_KEY = "..."
+# GAS接続設定
+GAS_URL = "https://script.google.com/macros/s/.../exec"
+# Beebotte接続設定
+BEEBOTTE_ACCESS_KEY = "..."
+BEEBOTTE_SECRET_KEY = "..."
+BEEBOTTE_TOPIC = ".../..."
